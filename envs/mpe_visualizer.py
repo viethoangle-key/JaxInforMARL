@@ -1,3 +1,5 @@
+import os
+os.environ["MPLBACKEND"] = "Agg"    # dev-colab to make matplotlib compatible
 from typing import Optional
 
 import matplotlib.animation as animation

@@ -238,10 +238,10 @@ def get_state_traj(
 
 
 if __name__ == "__main__":
-    artifact_version = "693"
+    artifact_version = "3"
 
     model_artifact_remote_name = (
-        f"josssdan/JaxInforMARL/PPO_RNN_Runner_State:v{artifact_version}"
+        f"newitch123-lab/JaxInforMARL/PPO_RNN_Runner_State:v{artifact_version}"
     )
 
     traj_batch, config, env = get_state_traj(
@@ -250,6 +250,6 @@ if __name__ == "__main__":
 
     viz = MPEVisualizer(env, traj_batch.env_state.env_state, config)
 
-    viz.animate(view=True)
+    viz.animate(save_filename="actor.gif", view=False)  # dev-colab to make matplotlib compatible
 
     # shutil.rmtree(model_artifact_name)

@@ -118,7 +118,7 @@ class NetworkConfig(NamedTuple):
 
 
 class WandbConfig(NamedTuple):
-    entity: str = "josssdan"
+    entity: str = "newitch123-lab"  # dev-colab
     project: str = "JaxInforMARL"
     mode: Literal["online", "offline", "disabled"] = "online"
     save_model: bool = True

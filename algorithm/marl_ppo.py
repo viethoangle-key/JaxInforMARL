@@ -1,7 +1,8 @@
 """
 Built off JaxMARL( https://github.com/FLAIROx/JaxMARL) baselines/MAPPO/mappo_rnn_mpe.py
 """
-
+import sys      # dev-colab
+sys.path.append("/content/JaxInforMARL/")
 import os
 from functools import partial
 from typing import Any, NamedTuple, cast
