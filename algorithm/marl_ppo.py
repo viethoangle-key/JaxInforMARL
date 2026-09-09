@@ -478,7 +478,10 @@ def _env_step(
 
         action_field = line_spaced_pi
 
-    action = pi.sample(seed=_rng)
+    # The original InforMARL evaluation uses deterministic actions.  Keep
+    # sampling during training, but use the categorical mode for visualisation
+    # and test rollouts.
+    action = pi.mode() if is_running_in_viz_mode else pi.sample(seed=_rng)
 
     if communication_type == CommunicationType.CURRENT_ACTION.value:
         agent_communication_message = action.reshape(

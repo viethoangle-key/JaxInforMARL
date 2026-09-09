@@ -448,9 +448,9 @@ class TargetMPEEnvironment(MultiAgentEnv):
             # add self edges for landmarks
             receivers = jnp.concatenate([self.landmark_indices, receivers])
             senders = jnp.concatenate([self.landmark_indices, senders])
-        edge_features = jnp.concatenate(
-            [edge_features, jnp.zeros(self.num_landmarks)[..., None]]
-        )
+            edge_features = jnp.concatenate(
+                [jnp.zeros(self.num_landmarks)[..., None], edge_features]
+            )
 
         # edges = get_agent_to_entity_edge(self.agent_indices)
         # receivers, senders, edge_features = jax.tree.map(jnp.ravel, edges)

@@ -30,6 +30,13 @@ from envs.mpe_visualizer import MPEVisualizer
 from model.actor_critic_rnn import CriticRNN, GraphAttentionActorRNN
 
 
+PAPER_TARGET_NUM_AGENTS = 3
+PAPER_TARGET_EPISODE_LENGTH = 25
+PAPER_TARGET_COLLISION_REWARD = -5.0
+PAPER_TARGET_GOAL_REWARD = 5.0
+PAPER_TARGET_SENSING_RADIUS = 1.0
+
+
 def get_restored_actor(model_artifact_name, config_dict, num_episodes):
     config = dict_to_config(config_dict)
     config = config._replace(
@@ -38,9 +45,24 @@ def get_restored_actor(model_artifact_name, config_dict, num_episodes):
     t_c = config.training_config
     t_c = t_c._replace(seed=65)
     e_c = config.env_config
-    e_c = e_c._replace(
-        env_kwargs=e_c.env_kwargs._replace(max_steps=100)._replace(num_agents=3)
+    # Evaluation is performed in a freshly-created local environment.  W&B is
+    # used only for checkpoint parameters and metadata; it does not provide a
+    # test trajectory.  Override metadata values that differ from the Target
+    # experiment reported in the paper.
+    paper_env_kwargs = e_c.env_kwargs._replace(
+        num_agents=PAPER_TARGET_NUM_AGENTS,
+        max_steps=PAPER_TARGET_EPISODE_LENGTH,
+        collision_reward_coefficient=PAPER_TARGET_COLLISION_REWARD,
+        one_time_death_reward=PAPER_TARGET_GOAL_REWARD,
+        distance_to_goal_reward_coefficient=1,
+        entity_acceleration=1,
+        agent_max_speed=2,
+        agent_visibility_radius=[PAPER_TARGET_SENSING_RADIUS],
+        entities_initial_coord_radius=[1.0],
+        add_self_edges_to_nodes=False,
+        agent_previous_obs_stack_size=1,
     )
+    e_c = e_c._replace(env_kwargs=paper_env_kwargs)
     # This is so that the derived values are updated
     config = MAPPOConfig.create(
         env_config=e_c,
