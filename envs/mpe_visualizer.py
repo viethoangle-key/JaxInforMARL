@@ -62,6 +62,7 @@ class MPEVisualizer(object):
         )
         # Save the animation to a gif
         if save_filename is not None:
+            os.makedirs(os.path.dirname(save_filename), exist_ok=True)
             ani.save(save_filename)
 
         if view:

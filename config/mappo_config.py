@@ -120,6 +120,7 @@ class NetworkConfig(NamedTuple):
 class WandbConfig(NamedTuple):
     entity: str = "newitch123-lab"  # dev-colab
     project: str = "JaxInforMARL"
+    name: str = "originalTargetEnvWithObs"
     mode: Literal["online", "offline", "disabled"] = "online"
     save_model: bool = True
     checkpoint_model_every_update_steps: float = 1e2
@@ -139,6 +140,7 @@ class MAPPOConfig(NamedTuple):
     network_config: NetworkConfig
     wandb_config: WandbConfig
     derived_values: DerivedValues
+    testing: bool
 
     @classmethod
     def create(
@@ -180,4 +182,45 @@ class MAPPOConfig(NamedTuple):
             network_config=network_config,
             wandb_config=wandb_config,
             derived_values=_derived_values,
+            testing=testing,
         )
+
+
+def with_paper_target_env(
+    config: MAPPOConfig,
+    *,
+    num_envs: int | None = None,
+    seed: int | None = None,
+    testing: bool = False,
+) -> MAPPOConfig:
+    """Apply the Target-environment settings used for the paper experiments."""
+    training_config = config.training_config
+    if num_envs is not None:
+        training_config = training_config._replace(num_envs=num_envs)
+    if seed is not None:
+        training_config = training_config._replace(seed=seed)
+
+    paper_env_kwargs = config.env_config.env_kwargs._replace(
+        num_agents=3 if not testing else 10,
+        max_steps=25 if not testing else 200,   # increase max_steps, num_agents for testing to allow for longer rollouts
+        collision_reward_coefficient=-5.0,
+        one_time_death_reward=5.0,
+        distance_to_goal_reward_coefficient=1,
+        entity_acceleration=1,
+        agent_max_speed=2,
+        agent_visibility_radius=[1.0],
+        entities_initial_coord_radius=[1.0],
+        add_self_edges_to_nodes=False,
+        agent_previous_obs_stack_size=1,
+    )
+    env_config = config.env_config._replace(env_kwargs=paper_env_kwargs)
+
+    # Recreate the top-level config so values derived from the number of agents
+    # and environments are recalculated.
+    return MAPPOConfig.create(
+        env_config=env_config,
+        training_config=training_config,
+        network_config=config.network_config,
+        wandb_config=config.wandb_config,
+        testing=testing,
+    )

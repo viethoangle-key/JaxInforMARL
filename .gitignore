@@ -4,6 +4,7 @@
 PPO_Runner_Checkpoint
 artifacts
 wandb
+saved_actor
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

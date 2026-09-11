@@ -350,11 +350,11 @@ class GraphAttentionActorRNN(nn.Module):
             jnp.arange(nodes.shape[1])[None, ...],
             agent_indices,
         ]
-        obs = jnp.concatenate([agent_node_features], axis=-1)
+        obs = jnp.concatenate([obs, agent_node_features], axis=-1)
 
         hidden, pi = ActorRNN(self.action_dim, self.config)(hidden, (obs, dones))
 
-        return hidden, pi
+        return hidden, pi, obs
 
 
 # noinspection DuplicatedCode

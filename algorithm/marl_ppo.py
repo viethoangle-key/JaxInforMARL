@@ -1,9 +1,10 @@
 """
 Built off JaxMARL( https://github.com/FLAIROx/JaxMARL) baselines/MAPPO/mappo_rnn_mpe.py
 """
+import argparse
 import sys      # dev-colab
-sys.path.append("/content/JaxInforMARL/")
 import os
+sys.path.append(os.path.abspath("."))
 from functools import partial
 from typing import Any, NamedTuple, cast
 
@@ -27,6 +28,7 @@ from config.mappo_config import (
 )
 from config.mappo_config import (
     MAPPOConfig as MAPPOConfig,
+    with_paper_target_env,
 )
 from envs.multiagent_env import MultiAgentEnv
 from envs.schema import EntityIndexAxis, MultiAgentGraph, MultiAgentObservation, PRNGKey
@@ -309,7 +311,7 @@ def critic_apply_cast(result: Any):
 
 def actor_apply_cast(result: Any):
     return cast(
-        tuple[Array, distrax.Categorical],
+        tuple[Array, distrax.Categorical, Array],
         result,
     )
 
@@ -419,7 +421,7 @@ def _env_step(
         graph_network_input,
         last_done[jnp.newaxis, :],
     )
-    ac_h_state, pi = actor_apply_cast(
+    ac_h_state, pi, actor_obs = actor_apply_cast(
         actor_network.apply(
             train_states.actor_train_state.params, h_states.actor_hidden_state, ac_in
         )
@@ -456,7 +458,7 @@ def _env_step(
         ):
             ac_lin_in = jax.tree.map(lambda x: x[None], ac_lin_in)
 
-            _, line_spaced_pi = actor_apply_cast(
+            _, line_spaced_pi, _ = actor_apply_cast(
                 actor_network.apply(
                     actor_params,
                     actor_h_state,
@@ -511,7 +513,11 @@ def _env_step(
         )
     )
 
-    # STEP ENV
+    # STEP ENV (with debug)
+    debug_step = log_env_state.env_state.step[0]
+    previous_agent_positions = log_env_state.env_state.entity_positions[
+        0, : env.num_agents
+    ]
     rng, _rng = jax.random.split(rng)
     rng_step = jax.random.split(_rng, num_env)
     env_input = (
@@ -578,6 +584,96 @@ def _env_step(
         initial_entity_position,
         rng,
     )
+
+    # =========== Debugging RL agent after the step ===========
+    debug_lines = [
+        "\n[DEBUG STEP {step}] (environment 0)",
+        "Actual actor observations (o(i) + agent node features):",
+    ]
+    debug_values = {"step": debug_step}
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        debug_lines.append(f"  {agent_label}: {{obs_{agent_index}}}")
+        debug_values[f"obs_{agent_index}"] = actor_obs[
+            0, agent_index * num_env
+        ]
+
+    debug_lines.append("o(i) ([global position, global velocity, relative goal]):")
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        debug_lines.append(f"  {agent_label}: {{raw_obs_{agent_index}}}")
+        debug_values[f"raw_obs_{agent_index}"] = obs_batch[agent_index * num_env]
+
+    debug_lines.append(
+        "Raw graph node features "
+        "([relative position, relative velocity, relative goal], entity type):"
+    )
+    entity_labels = list(env.agent_labels) + [
+        f"target_{i}" for i in range(env.num_agents)
+    ]
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        actor_index = agent_index * num_env
+        debug_lines.append(f"  Observed by {agent_label}:")
+        for entity_index, entity_label in enumerate(entity_labels):
+            debug_lines.append(
+                f"    {entity_label}: {{graph_equivariant_{agent_index}_{entity_index}}} "
+                f"| {{graph_non_equivariant_{agent_index}_{entity_index}}}"
+            )
+            debug_values[f"graph_equivariant_{agent_index}_{entity_index}"] = (
+                graph_batch.equivariant_nodes[actor_index, entity_index, -1]
+            )
+            debug_values[f"graph_non_equivariant_{agent_index}_{entity_index}"] = (
+                graph_batch.non_equivariant_nodes[actor_index, entity_index, -1]
+            )
+
+    debug_lines.append("Actions:")
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        debug_lines.append(
+            f"  {agent_label}: {{action_{agent_index}}} | "
+            f"{{action_name_{agent_index}}} | {{action_vector_{agent_index}}}"
+        )
+        debug_values[f"action_{agent_index}"] = env_act[agent_label][0]
+
+    debug_lines.append("Rewards:")
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        debug_lines.append(f"  {agent_label}: {{reward_{agent_index}}}")
+        debug_values[f"reward_{agent_index}"] = reward[agent_label][0]
+
+    debug_lines.append("Global positions before step:")
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        debug_lines.append(f"  {agent_label}: {{position_{agent_index}}}")
+        debug_values[f"position_{agent_index}"] = previous_agent_positions[agent_index]
+
+    debug_lines.append("Global positions after step:")
+    new_agent_positions = log_env_state.env_state.entity_positions[0, : env.num_agents]
+    for agent_index, agent_label in enumerate(env.agent_labels):
+        debug_lines.append(f"  {agent_label}: {{new_position_{agent_index}}}")
+        debug_values[f"new_position_{agent_index}"] = new_agent_positions[agent_index]
+
+    def _print_debug_output(**values):
+        action_names = ("Stay still", "Left", "Right", "Down", "Up")
+        action_vectors = ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1))
+        for agent_index in range(env.num_agents):
+            for entity_index, entity_label in enumerate(entity_labels):
+                key = f"graph_equivariant_{agent_index}_{entity_index}"
+                matrix = np.array2string(
+                    np.asarray(values[key]),
+                    precision=8,
+                    separator=", ",
+                    suppress_small=True,
+                    floatmode="fixed",
+                    sign=" ",
+                )
+                continuation_indent = " " * len(f"    {entity_label}: ")
+                values[key] = matrix.replace("\n", f"\n{continuation_indent}")
+        for agent_index in range(env.num_agents):
+            action_id = int(np.ravel(values[f"action_{agent_index}"])[0])
+            values[f"action_name_{agent_index}"] = action_names[action_id]
+            values[f"action_vector_{agent_index}"] = list(action_vectors[action_id])
+        print("\n".join(debug_lines).format(**values))
+
+    if config.testing:
+        jax.debug.callback(_print_debug_output, ordered=True, **debug_values)
+    # =========== End debug ===========
+
     return runner_state, transition
 
 
@@ -604,7 +700,7 @@ def _update_epoch(
         def _actor_loss_fn(actor_params, init_h_state, traj_batch, gae):
             nonlocal ppo_config, actor_network
             # RERUN NETWORK
-            _, pi = actor_apply_cast(
+            _, pi, _ = actor_apply_cast(
                 actor_network.apply(
                     actor_params,
                     init_h_state.squeeze(),
@@ -1068,7 +1164,17 @@ def make_train(config: MAPPOConfig):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Train MAPPO on JaxInforMARL.")
+    parser.add_argument(
+        "--paper-config",
+        action="store_true",
+        help="use the Target-environment configuration reported in the paper",
+    )
+    args = parser.parse_args()
+
     config: MAPPOConfig = MAPPOConfig.create()
+    if args.paper_config:
+        config = with_paper_target_env(config)
     assert (
             config.training_config.num_envs > 1
     ), "Number of environments must be greater than 1 for training"
@@ -1078,6 +1184,7 @@ def main():
         project=config.wandb_config.project,
         mode=config.wandb_config.mode,
         config=dict_config,
+        name=config.wandb_config.name,
     )
     rng = jax.random.PRNGKey(config.training_config.seed)
     with jax.disable_jit(False):

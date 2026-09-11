@@ -1,3 +1,4 @@
+from logging import config
 import os
 from functools import partial
 from pathlib import Path
@@ -25,52 +26,22 @@ from algorithm.marl_ppo import (
     make_env_from_config,
 )
 from config.config_format_conversion import config_to_dict, dict_to_config
-from config.mappo_config import MAPPOConfig
+from config.mappo_config import MAPPOConfig, with_paper_target_env
 from envs.mpe_visualizer import MPEVisualizer
 from model.actor_critic_rnn import CriticRNN, GraphAttentionActorRNN
 
 
-PAPER_TARGET_NUM_AGENTS = 3
-PAPER_TARGET_EPISODE_LENGTH = 25
-PAPER_TARGET_COLLISION_REWARD = -5.0
-PAPER_TARGET_GOAL_REWARD = 5.0
-PAPER_TARGET_SENSING_RADIUS = 1.0
-
-
 def get_restored_actor(model_artifact_name, config_dict, num_episodes):
     config = dict_to_config(config_dict)
-    config = config._replace(
-        training_config=config.training_config._replace(num_envs=num_episodes)
-    )
-    t_c = config.training_config
-    t_c = t_c._replace(seed=65)
-    e_c = config.env_config
     # Evaluation is performed in a freshly-created local environment.  W&B is
     # used only for checkpoint parameters and metadata; it does not provide a
     # test trajectory.  Override metadata values that differ from the Target
     # experiment reported in the paper.
-    paper_env_kwargs = e_c.env_kwargs._replace(
-        num_agents=PAPER_TARGET_NUM_AGENTS,
-        max_steps=PAPER_TARGET_EPISODE_LENGTH,
-        collision_reward_coefficient=PAPER_TARGET_COLLISION_REWARD,
-        one_time_death_reward=PAPER_TARGET_GOAL_REWARD,
-        distance_to_goal_reward_coefficient=1,
-        entity_acceleration=1,
-        agent_max_speed=2,
-        agent_visibility_radius=[PAPER_TARGET_SENSING_RADIUS],
-        entities_initial_coord_radius=[1.0],
-        add_self_edges_to_nodes=False,
-        agent_previous_obs_stack_size=1,
+    config = with_paper_target_env(
+        config, num_envs=num_episodes, seed=65, testing=True
     )
-    e_c = e_c._replace(env_kwargs=paper_env_kwargs)
-    # This is so that the derived values are updated
-    config = MAPPOConfig.create(
-        env_config=e_c,
-        training_config=t_c,
-        network_config=config.network_config,
-        wandb_config=config.wandb_config,
-        testing=True,
-    )
+    print("[Debug Env_config]")
+    pprint(config.env_config.env_kwargs._asdict())
 
     env = make_env_from_config(config)
     rng = jax.random.PRNGKey(config.training_config.seed)
@@ -145,14 +116,18 @@ def get_state_traj(
         store_action_field=False,
         num_episodes=2,
 ) -> (TransitionForVisualization, MAPPOConfig):
-    api = wandb.Api()
-    model_artifact = api.artifact(model_artifact_remote_name, type="model")
-
     model_artifact_name = f"artifacts/PPO_RNN_Runner_State:v{artifact_version}"
-    if not Path(model_artifact_name).is_dir():
+    if Path(model_artifact_name).is_dir():
+        # W&B does not store artifact metadata in the downloaded checkpoint
+        # directory. Use the local config when the parameters are already
+        # available so visualization can run without network access.
+        config_dict = config_to_dict(MAPPOConfig.create())
+        config_dict
+    else:
+        api = wandb.Api()
+        model_artifact = api.artifact(model_artifact_remote_name, type="model")
         model_artifact.download()
-
-    config_dict = model_artifact.metadata
+        config_dict = model_artifact.metadata
 
     (
         config,
@@ -195,6 +170,10 @@ def get_state_traj(
             0 if initial_entity_position.size != 0 else None,
         ),
     )(env_key, initial_communication_message_env_input, initial_entity_position)
+    # print("[DEBUG AFTER RESET]")
+    # pprint(f"obs_v\n{obs_v}")
+    # pprint(f"graph_v\n{graph_v}")
+    # pprint(f"env_state\n{env_state}")
 
     key, _rng = jax.random.split(key, 2)
 
@@ -260,7 +239,7 @@ def get_state_traj(
 
 
 if __name__ == "__main__":
-    artifact_version = "3"
+    artifact_version = "16"
 
     model_artifact_remote_name = (
         f"newitch123-lab/JaxInforMARL/PPO_RNN_Runner_State:v{artifact_version}"
@@ -272,6 +251,6 @@ if __name__ == "__main__":
 
     viz = MPEVisualizer(env, traj_batch.env_state.env_state, config)
 
-    viz.animate(save_filename="actor.gif", view=False)  # dev-colab to make matplotlib compatible
+    viz.animate(save_filename="artifacts/15_agents_withObs.gif", view=False)  # dev-colab to make matplotlib compatible
 
     # shutil.rmtree(model_artifact_name)
