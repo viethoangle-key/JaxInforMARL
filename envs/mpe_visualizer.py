@@ -4,6 +4,7 @@ from typing import Optional
 
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
+import colorcet as cc
 import seaborn as sns
 
 from calculate_metric import get_stats_for_state
@@ -92,7 +93,10 @@ class MPEVisualizer(object):
         self.ax.set_xlim([-ax_lim, ax_lim])
         self.ax.set_ylim([-ax_lim, ax_lim])
 
-        palette = sns.color_palette("tab10", n_colors=self.env.num_entities)
+        # Glasbey is designed to keep categorical colors perceptually distinct,
+        # unlike tab10, which starts repeating after ten agents.  Targets reuse
+        # their corresponding agent's color below.
+        palette = sns.color_palette(cc.glasbey_dark, n_colors=self.env.num_agents)
 
         fig_size_inches = self.fig.get_size_inches()
         dpi = self.fig.dpi

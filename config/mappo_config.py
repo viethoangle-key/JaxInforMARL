@@ -83,7 +83,7 @@ class TrainingConfig(NamedTuple):
     anneal_lr: bool = True
     num_envs: int = 32
     gamma: float = 0.99
-    total_timesteps: float = 1e6
+    total_timesteps: float = 2e6
     ppo_config: PPOConfig = PPOConfig()
 
 
@@ -200,17 +200,18 @@ def with_paper_target_env(
     if seed is not None:
         training_config = training_config._replace(seed=seed)
 
+    # dev: increase max_steps, num_agents, entities_initial_coord_radius for testing to allow for longer rollouts
     paper_env_kwargs = config.env_config.env_kwargs._replace(
-        num_agents=3 if not testing else 10,
-        max_steps=25 if not testing else 200,   # increase max_steps, num_agents for testing to allow for longer rollouts
+        num_agents=3 if not testing else 15,
+        max_steps=25 if not testing else 200,   
         collision_reward_coefficient=-5.0,
         one_time_death_reward=5.0,
         distance_to_goal_reward_coefficient=1,
         entity_acceleration=1,
         agent_max_speed=2,
         agent_visibility_radius=[1.0],
-        entities_initial_coord_radius=[1.0],
-        add_self_edges_to_nodes=False,
+        entities_initial_coord_radius=[1.0] if not testing else [3.0],
+        add_self_edges_to_nodes=True,
         agent_previous_obs_stack_size=1,
     )
     env_config = config.env_config._replace(env_kwargs=paper_env_kwargs)

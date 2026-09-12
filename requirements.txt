@@ -9,6 +9,7 @@ wandb
 
 # Visualization
 # seaborn
+colorcet
 # plotly
 # dash
 # dash-bootstrap-components
