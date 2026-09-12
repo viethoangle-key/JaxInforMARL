@@ -177,7 +177,7 @@ class TargetMPEEnvironment(MultiAgentEnv):
         self.dt = dt
         self.max_steps = max_steps
         self.entity_radius = jnp.concatenate(
-            [jnp.full(self.num_agents, 0.15), jnp.full(self.num_landmarks, 0.2)]
+            [jnp.full(self.num_agents, 0.05), jnp.full(self.num_landmarks, 0.05)]
         )
         self.is_moveable = jnp.concatenate(
             [
@@ -718,11 +718,14 @@ class TargetMPEEnvironment(MultiAgentEnv):
         ) -> Float[Array, AgentIndexAxis]:
             # reward is the negative distance from agent to landmark
             corresponding_landmark_index = self.num_agents + agent_index
-            return -jnp.sum(
-                jnp.square(
-                    state.entity_positions[agent_index]
-                    - state.entity_positions[corresponding_landmark_index]
-                ),
+            distance = jnp.linalg.norm(
+                state.entity_positions[agent_index]
+                - state.entity_positions[corresponding_landmark_index]
+            )
+            return jnp.where(
+                distance < 0.05,
+                self.one_time_death_reward[agent_index],
+                -distance,
             )
 
         @partial(jax.vmap, in_axes=(0, None))
@@ -752,17 +755,9 @@ class TargetMPEEnvironment(MultiAgentEnv):
                 global_dist_rew
                 + self.collision_reward_coefficient * global_agent_collision_rew
         )
-        one_time_reaching_goal_reward = jnp.sum(
-            jax.lax.select(
-                state.did_agent_die_this_time_step,
-                self.one_time_death_reward,
-                jnp.zeros_like(self.one_time_death_reward),
-            )
-        )
-
         return {
-            agent_label: global_reward + one_time_reaching_goal_reward
-            for agent_label, agent_index in self.agent_labels_to_index.items()
+            agent_label: global_reward
+            for agent_label in self.agent_labels
         }
 
     def is_there_overlap(self, a: EntityIndex, b: EntityIndex, state: MPEState):

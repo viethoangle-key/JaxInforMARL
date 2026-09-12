@@ -202,15 +202,15 @@ def with_paper_target_env(
 
     # dev: increase max_steps, num_agents, entities_initial_coord_radius for testing to allow for longer rollouts
     paper_env_kwargs = config.env_config.env_kwargs._replace(
-        num_agents=3 if not testing else 15,
-        max_steps=25 if not testing else 200,   
+        num_agents=3, #if not testing else 15,
+        max_steps=25, #if not testing else 200,   
         collision_reward_coefficient=-5.0,
         one_time_death_reward=5.0,
         distance_to_goal_reward_coefficient=1,
         entity_acceleration=1,
         agent_max_speed=2,
         agent_visibility_radius=[1.0],
-        entities_initial_coord_radius=[1.0] if not testing else [3.0],
+        entities_initial_coord_radius=[1.0], # if not testing else [3.0],
         add_self_edges_to_nodes=True,
         agent_previous_obs_stack_size=1,
     )

@@ -251,6 +251,7 @@ if __name__ == "__main__":
 
     viz = MPEVisualizer(env, traj_batch.env_state.env_state, config)
 
-    viz.animate(save_filename="artifacts/15_agents_withObs.gif", view=False)  # dev-colab to make matplotlib compatible
+    num_agents = config.env_config.env_kwargs.num_agents
+    viz.animate(save_filename=f"artifacts/{num_agents}_agents_withObs.gif", view=False)  # dev-colab to make matplotlib compatible
 
     # shutil.rmtree(model_artifact_name)

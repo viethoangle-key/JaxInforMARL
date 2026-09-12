@@ -367,6 +367,7 @@ but not the reward consumed by PPO.
 # My own change to fix v29:
 - exp1: prevent padded edges from crossing batched envs
 - exp2: reward function to be +5 each step, and negative euclidean distance, and change entity size
++ Change entity size to 0.05
 + Replace the inner reward function with:
 ```python
 def _dist_between_target_reward(
@@ -402,3 +403,14 @@ return {
     for agent_label in self.agent_labels
 }
 ```
+
+- exp3: Changing PPO training config 
+(| Agents | 3 | 3 |
+| Parallel environments | 32 | 128 |
+| Episode length | 25 | 25 |
+| Total environment steps | 2,000,000 | 2,000,000 |
+| PPO epochs | 4 | 10 |
+| Actor minibatches | 32 | 1 (with automatic target size 128) |
+| Learning rate | `5e-4` | `7e-4` |
+| Actor activation | ReLU | Tanh because `--use_ReLU` is `store_false` |
+| Value normalization | None | PopArt enabled |)
