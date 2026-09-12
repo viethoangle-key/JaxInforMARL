@@ -460,7 +460,7 @@ class TargetMPEEnvironment(MultiAgentEnv):
             self.entity_indices, self.agent_indices
         )
         n_node = jnp.array([self.num_entities])
-        n_edge = jnp.array([receivers.shape[0]])
+        n_edge = jnp.sum(receivers >= 0, keepdims=True)
         agent_label_to_graph = {
             agent_label: GraphsTupleWithAgentIndex(
                 equivariant_nodes=equivariant_node_features[

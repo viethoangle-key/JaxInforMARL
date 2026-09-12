@@ -359,3 +359,46 @@ reward, state-integration order, custom graph network, and lack of PopArt also
 differ from the original implementation. Finally, `MPELogWrapper` multiplies
 returns by the number of agents for reporting; this changes the plotted scale,
 but not the reward consumed by PPO.
+
+# List of PPO_Runner_State versions
+- v16: First runnable agent, trained on jaxinformarl config, tested on paper config up to 10 agents
+- v29:
+
+# My own change to fix v29:
+- exp1: prevent padded edges from crossing batched envs
+- exp2: reward function to be +5 each step, and negative euclidean distance, and change entity size
++ Replace the inner reward function with:
+```python
+def _dist_between_target_reward(
+        agent_index: Int[Array, AgentIndexAxis], state: MPEState
+) -> Float[Array, AgentIndexAxis]:
+    corresponding_landmark_index = self.num_agents + agent_index
+    distance = jnp.linalg.norm(
+        state.entity_positions[agent_index]
+        - state.entity_positions[corresponding_landmark_index]
+    )
+
+    goal_threshold = 0.1
+    return jnp.where(
+        distance < goal_threshold,
+        5.0,
+        -distance,
+    )
+```
++ remove the current one-time bonus:
+```python
+one_time_reaching_goal_reward = jnp.sum(
+    jax.lax.select(
+        state.did_agent_die_this_time_step,
+        self.one_time_death_reward,
+        jnp.zeros_like(self.one_time_death_reward),
+    )
+)
+```
++ and change to:
+```python
+return {
+    agent_label: global_reward
+    for agent_label in self.agent_labels
+}
+```

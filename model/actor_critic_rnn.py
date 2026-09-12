@@ -183,7 +183,7 @@ class GraphMultiHeadAttentionLayer(nn.Module):
 
     @functools.partial(nn.jit, static_argnames=("avg_multi_head",))
     @nn.compact
-    def __call__(self, graph: jraph.GraphsTuple, avg_multi_head):
+    def __call__(self, graph: jraph.GraphsTuple, avg_multi_head, edge_mask):
         # Assumes that given graph is in into jraph compatible format
         nodes, edges, receivers, senders, _, _, _ = graph
 
@@ -237,10 +237,18 @@ class GraphMultiHeadAttentionLayer(nn.Module):
                 key_sent_attributes * key_received_attributes, axis=-1
             ) / jnp.sqrt(self.config.network_config.graph_attention_key_dim)
 
+            broadcast_edge_mask = edge_mask.reshape(
+                (edge_mask.shape[0],) + (1,) * (softmax_logits.ndim - 1)
+            )
+            softmax_logits = jnp.where(
+                broadcast_edge_mask, softmax_logits, -1e30
+            )
+
             # Compute the softmax weights on the entire tree.
             weights = utils.segment_softmax(
                 softmax_logits, segment_ids=receivers, num_segments=sum_n_node
             )
+            weights = jnp.where(broadcast_edge_mask, weights, 0.0)
             # Apply weights
             messages = weights[..., None] * sent_attributes
             # Aggregate messages to nodes.
@@ -278,6 +286,10 @@ class GraphStackedMultiHeadAttention(nn.Module):
         nodes = equivariant_nodes.reshape((num_graph * num_nodes, rolling_memory_dim, *node_feature_dim))
         edges = edges.reshape((num_graph * num_edges, edge_feature_dim))
 
+        edge_mask = (receivers >= 0) & (senders >= 0)
+        receivers = jnp.where(edge_mask, receivers, 0)
+        senders = jnp.where(edge_mask, senders, 0)
+
         index_offset = jnp.arange(num_graph).reshape(num_time_steps, num_actors)[
             ..., None
         ]
@@ -285,6 +297,7 @@ class GraphStackedMultiHeadAttention(nn.Module):
         senders += index_offset * num_nodes
         receivers = receivers.flatten()
         senders = senders.flatten()
+        edge_mask = edge_mask.flatten()
         n_node = n_node.flatten()
         n_edge = n_edge.flatten()
 
@@ -300,11 +313,13 @@ class GraphStackedMultiHeadAttention(nn.Module):
 
         for _ in range(self.config.network_config.num_graph_attn_layers - 1):
             graph = GraphMultiHeadAttentionLayer(self.config)(
-                graph, avg_multi_head=False
+                graph, avg_multi_head=False, edge_mask=edge_mask
             )
         graph = graph._replace(nodes=jnp.sum(graph.nodes, axis=-2)[..., None, :])
         # Average the multi-head attention for the last layer
-        graph = GraphMultiHeadAttentionLayer(self.config)(graph, avg_multi_head=True)
+        graph = GraphMultiHeadAttentionLayer(self.config)(
+            graph, avg_multi_head=True, edge_mask=edge_mask
+        )
 
         nodes, edges, receivers, senders, _, n_node, n_edge = graph
 
