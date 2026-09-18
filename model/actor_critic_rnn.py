@@ -218,8 +218,12 @@ class GraphMultiHeadAttentionLayer(nn.Module):
         # embed edge features
         edge_features = linear_layer(edges)
 
+        # Padded edges use ``sum_n_node`` as an isolated dummy receiver. Use a
+        # real node only for the feature lookup; the resulting dummy messages
+        # are aggregated into the extra segment and discarded below.
+        safe_receivers = jnp.where(receivers < sum_n_node, receivers, 0)
         sent_attributes = nodes[senders]
-        received_attributes = nodes[receivers]
+        received_attributes = nodes[safe_receivers]
 
         nodes_seg_sum_from_each_attn_head = []
 
@@ -239,14 +243,14 @@ class GraphMultiHeadAttentionLayer(nn.Module):
 
             # Compute the softmax weights on the entire tree.
             weights = utils.segment_softmax(
-                softmax_logits, segment_ids=receivers, num_segments=sum_n_node
+                softmax_logits, segment_ids=receivers, num_segments=sum_n_node + 1
             )
             # Apply weights
             messages = weights[..., None] * sent_attributes
             # Aggregate messages to nodes.
             nodes_seg_sum = jax.ops.segment_sum(
-                messages, receivers, num_segments=sum_n_node
-            )
+                messages, receivers, num_segments=sum_n_node + 1
+            )[:sum_n_node]
             nodes_seg_sum_from_each_attn_head.append(nodes_seg_sum)
 
         if avg_multi_head:
@@ -281,8 +285,14 @@ class GraphStackedMultiHeadAttention(nn.Module):
         index_offset = jnp.arange(num_graph).reshape(num_time_steps, num_actors)[
             ..., None
         ]
-        receivers += index_offset * num_nodes
-        senders += index_offset * num_nodes
+        index_offset *= num_nodes
+        padded_edges = (receivers < 0) | (senders < 0)
+        # Keep fixed-size edge arrays for JIT, but route padding to an isolated
+        # segment instead of turning it into an edge to the preceding graph.
+        receivers = jnp.where(
+            padded_edges, num_graph * num_nodes, receivers + index_offset
+        )
+        senders = jnp.where(padded_edges, 0, senders + index_offset)
         receivers = receivers.flatten()
         senders = senders.flatten()
         n_node = n_node.flatten()

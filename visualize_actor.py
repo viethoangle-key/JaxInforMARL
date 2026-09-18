@@ -239,7 +239,7 @@ def get_state_traj(
 
 
 if __name__ == "__main__":
-    artifact_version = "16"
+    artifact_version = "29"
 
     model_artifact_remote_name = (
         f"newitch123-lab/JaxInforMARL/PPO_RNN_Runner_State:v{artifact_version}"

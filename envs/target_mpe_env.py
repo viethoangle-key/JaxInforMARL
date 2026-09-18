@@ -177,7 +177,7 @@ class TargetMPEEnvironment(MultiAgentEnv):
         self.dt = dt
         self.max_steps = max_steps
         self.entity_radius = jnp.concatenate(
-            [jnp.full(self.num_agents, 0.15), jnp.full(self.num_landmarks, 0.2)]
+            [jnp.full(self.num_agents, 0.05), jnp.full(self.num_landmarks, 0.0)]
         )
         self.is_moveable = jnp.concatenate(
             [
@@ -225,7 +225,7 @@ class TargetMPEEnvironment(MultiAgentEnv):
         increase_position = 1.0
         decrease_position = -1.0
         u_val = jax.lax.select(
-            action % 2 == 0, increase_position, decrease_position
+            action % 2 == 1, increase_position, decrease_position
         ) * (action != 0)
         u = u.at[action_to_coordinate_axis].set(u_val)
         u = u * self.entity_acceleration[agent_index] * self.is_moveable[agent_index]
@@ -442,7 +442,14 @@ class TargetMPEEnvironment(MultiAgentEnv):
         receivers = valid_agent_idx  # shape: (num_valid_edges,)
         senders = valid_entity_idx  # shape: (num_valid_edges,)
 
-        edge_features = distances[valid_agent_idx, valid_entity_idx][..., None]
+        valid_edges = (valid_agent_idx >= 0) & (valid_entity_idx >= 0)
+        safe_agent_idx = jnp.where(valid_edges, valid_agent_idx, 0)
+        safe_entity_idx = jnp.where(valid_edges, valid_entity_idx, 0)
+        edge_features = jnp.where(
+            valid_edges[..., None],
+            distances[safe_agent_idx, safe_entity_idx][..., None],
+            0.0,
+        )
 
         if self.add_self_edges_to_nodes:
             # add self edges for landmarks
@@ -581,7 +588,6 @@ class TargetMPEEnvironment(MultiAgentEnv):
     ):
         """integrate physical state"""
 
-        entity_positions += entity_velocities * self.dt
         entity_velocities = entity_velocities * (1 - self.damping)
 
         entity_velocities += (all_forces / mass) * self.dt * moveable
@@ -594,6 +600,7 @@ class TargetMPEEnvironment(MultiAgentEnv):
         entity_velocities = jax.lax.select(
             (speed > max_speed) & (max_speed >= 0), over_max, entity_velocities
         )
+        entity_positions += entity_velocities * self.dt
 
         return entity_positions, entity_velocities
 
@@ -658,36 +665,14 @@ class TargetMPEEnvironment(MultiAgentEnv):
 
         key, key_double_integrator = jax.random.split(key)
 
-        # death masking
-        is_agent_dead = jax.vmap(self.is_there_overlap, in_axes=(0, 0, None))(
-            self.agent_indices, self.landmark_indices, state
-        )
+        # Agents remain active after reaching their goals.
+        is_agent_dead = jnp.zeros(self.num_agents, dtype=bool)
 
         entity_positions, entity_velocities = self._double_integrator_dynamics(
             key_double_integrator, state, u, is_agent_dead
         )
-        dones = jnp.asarray(state.step >= self.max_steps) | is_agent_dead
-
-        did_agent_die_this_time_step = (
-                state.did_agent_die_this_time_step ^ is_agent_dead
-        )
-
-        agent_positions = jnp.where(
-            did_agent_die_this_time_step[..., None],
-            entity_positions[self.num_agents:],
-            entity_positions[: self.num_agents],
-        )
-
-        agent_velocities = jnp.where(
-            did_agent_die_this_time_step[..., None],
-            entity_velocities[self.num_agents:],
-            entity_velocities[: self.num_agents],
-        )
-
-        entity_positions = entity_positions.at[: self.num_agents].set(agent_positions)
-        entity_velocities = entity_velocities.at[: self.num_agents].set(
-            agent_velocities
-        )
+        dones = jnp.full(self.num_agents, state.step >= self.max_steps, dtype=bool)
+        did_agent_die_this_time_step = jnp.zeros(self.num_agents, dtype=bool)
 
         state = MPEState(
             entity_positions=entity_positions,
@@ -713,16 +698,26 @@ class TargetMPEEnvironment(MultiAgentEnv):
         """Return dictionary of agent rewards"""
 
         @partial(jax.vmap, in_axes=[0, None])
-        def _dist_between_target_reward(
+        def _target_reward(
                 agent_index: Int[Array, AgentIndexAxis], state: MPEState
         ) -> Float[Array, AgentIndexAxis]:
-            # reward is the negative distance from agent to landmark
             corresponding_landmark_index = self.num_agents + agent_index
-            return -jnp.sum(
-                jnp.square(
-                    state.entity_positions[agent_index]
-                    - state.entity_positions[corresponding_landmark_index]
-                ),
+            distance = jnp.sqrt(
+                jnp.sum(
+                    jnp.square(
+                        state.entity_positions[agent_index]
+                        - state.entity_positions[corresponding_landmark_index]
+                    )
+                )
+            )
+            reached_goal = distance < (
+                self.entity_radius[agent_index]
+                + self.entity_radius[corresponding_landmark_index]
+            )
+            return jax.lax.select(
+                reached_goal,
+                self.one_time_death_reward[agent_index],
+                -self.distance_to_goal_reward_coefficient * distance,
             )
 
         @partial(jax.vmap, in_axes=(0, None))
@@ -741,27 +736,18 @@ class TargetMPEEnvironment(MultiAgentEnv):
         # def _agent_rew(agent_idx: int, collisions: Bool[Array, "..."]):
         #     rew = -1 * jnp.sum(collisions[agent_idx])
         #     return rew
-        dist_reward = _dist_between_target_reward(self.agent_indices, state)
+        target_reward = _target_reward(self.agent_indices, state)
 
-        global_dist_rew = self.distance_to_goal_reward_coefficient * jnp.sum(
-            dist_reward
-        )
+        global_target_rew = jnp.sum(target_reward)
         global_agent_collision_rew = jnp.sum(agent_agent_collision)
 
         global_reward = (
-                global_dist_rew
+                global_target_rew
                 + self.collision_reward_coefficient * global_agent_collision_rew
-        )
-        one_time_reaching_goal_reward = jnp.sum(
-            jax.lax.select(
-                state.did_agent_die_this_time_step,
-                self.one_time_death_reward,
-                jnp.zeros_like(self.one_time_death_reward),
-            )
         )
 
         return {
-            agent_label: global_reward + one_time_reaching_goal_reward
+            agent_label: global_reward
             for agent_label, agent_index in self.agent_labels_to_index.items()
         }
 
@@ -825,7 +811,7 @@ class TargetMPEEnvironment(MultiAgentEnv):
         increase_position = 1.0
         decrease_position = -1.0
         u_val = jax.lax.select(
-            action % 2 == 0, increase_position, decrease_position
+            action % 2 == 1, increase_position, decrease_position
         ) * (action != 0)
         u = u.at[action_to_coordinate_axis].set(u_val)
         return u
