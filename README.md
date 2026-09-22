@@ -5,10 +5,10 @@
 <img src="https://github.com/jselvaraaj/JaxInforMARL/blob/main/10_agents.gif?raw=true" alt="Original 10 agents" width="60%">
 
 <h4>My modified JAX implementation - Trained with 3 agent and executed with 10 agents, with the same large world size of 10</h4>
-<img src="https://github.com/viethoangle-key/JaxInforMARL/blob/paper-aligned-training/artifacts_paper-aligned-training/10_agents_withObs_0_large?raw=true" alt="My 10 agents" width="60%">
+<img src="https://github.com/viethoangle-key/JaxInforMARL/blob/paper-aligned-training/artifacts_paper-aligned-training/10_agents_withObs_0_large.gif?raw=true" alt="My 10 agents" width="60%">
 
-<h4>My modified JAX implementation - Trained with 3 agent and executed with 10 agents, using the paper InfoMARL's world size of 1</h4>
-<img src="https://github.com/viethoangle-key/JaxInforMARL/blob/paper-aligned-training/artifacts_paper-aligned-training/10_agents_withObs_0?raw=true" alt="My 10 agents" width="60%">
+<h4>My modified JAX implementation - Trained with 3 agent and executed with 10 agents, using a smaller world size of 3</h4>
+<img src="https://github.com/viethoangle-key/JaxInforMARL/blob/paper-aligned-training/artifacts_paper-aligned-training/10_agents_withObs_0.gif?raw=true" alt="My 10 agents" width="60%">
 
 
 The original JAX implementation at [**JaxInfoMARL**](#jaxinfomarl) was developed to greatly speed up the training process of the original [**InfoMARL**](#infomarl) paper. However, in their example, most of the agents could not reach the goal and just hovers around the space instead. In my repository, with the same large world size, almost all agents reach the goal proximity. With a smaller world size of 3 similar to InfoMARL environment configuration, agents reach fully inside goal with 100% success rate. In order to achieve this, I modified `JaxInfoMARL` to include more critical features in state design and reward design that were implemented for a scalable RL system in [**InfoMARL**](#infomarl), including:
