@@ -39,7 +39,7 @@ The original JAX implementation at [**JaxInfoMARL**](#jaxinfomarl) was developed
 
 <h2 name="citation" id="citation">Citation</h2>
 
-<r name="infomarl" id="infomarl">Original InfoMARL paper and implementation:</r>
+<a name="infomarl" id="infomarl">Original InfoMARL paper and implementation:</a>
 
 ```
 @software{InforMARL,
@@ -49,7 +49,7 @@ The original JAX implementation at [**JaxInfoMARL**](#jaxinfomarl) was developed
     }
 ```
 
-<r name="jaxinfomarl" id="jaxinfomarl">JaxInforMARL implementation:</r>
+<a name="jaxinfomarl" id="jaxinfomarl">JaxInforMARL implementation:</a>
 
 ```
 @software{JaxInforMARL,
