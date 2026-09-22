@@ -148,7 +148,7 @@ class MPEVisualizer(object):
         for i in range(self.env.num_agents, self.env.num_entities):
             circle = Circle(
                 state.entity_positions[i],  # type: ignore
-                self.env.entity_radius[i],
+                self.env.entity_radius[i] if self.env.entity_radius[i] > 0.0 else 0.5,  # mark zero-size goal with 0.2 radius
                 color=ordered_color[i - self.env.num_agents],
                 ec=ordered_color[i - self.env.num_agents],
                 lw=1.0,

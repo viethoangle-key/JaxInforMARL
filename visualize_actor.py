@@ -31,14 +31,14 @@ from envs.mpe_visualizer import MPEVisualizer
 from model.actor_critic_rnn import CriticRNN, GraphAttentionActorRNN
 
 
-def get_restored_actor(model_artifact_name, config_dict, num_episodes):
+def get_restored_actor(model_artifact_name, config_dict, num_episodes, seed):
     config = dict_to_config(config_dict)
     # Evaluation is performed in a freshly-created local environment.  W&B is
     # used only for checkpoint parameters and metadata; it does not provide a
     # test trajectory.  Override metadata values that differ from the Target
     # experiment reported in the paper.
     config = with_paper_target_env(
-        config, num_envs=num_episodes, seed=65, testing=True
+        config, num_envs=num_episodes, seed=seed, testing=True
     )
     print("[Debug Env_config]")
     pprint(config.env_config.env_kwargs._asdict())
@@ -114,7 +114,8 @@ def get_state_traj(
         artifact_version,
         initial_entity_position=None,
         store_action_field=False,
-        num_episodes=2,
+        num_episodes=1,
+        seed=0
 ) -> (TransitionForVisualization, MAPPOConfig):
     model_artifact_name = f"artifacts/PPO_RNN_Runner_State:v{artifact_version}"
     if Path(model_artifact_name).is_dir():
@@ -141,7 +142,7 @@ def get_state_traj(
         initial_communication_message_env_input,
         initial_communication_message,
         key,
-    ) = get_restored_actor(model_artifact_name, config_dict, num_episodes)
+    ) = get_restored_actor(model_artifact_name, config_dict, num_episodes, seed)
 
     print("Config:")
     pprint(config_to_dict(config))
@@ -239,18 +240,24 @@ def get_state_traj(
 
 
 if __name__ == "__main__":
-    artifact_version = "29"
+    artifact_version = "87"
 
     model_artifact_remote_name = (
         f"newitch123-lab/JaxInforMARL/PPO_RNN_Runner_State:v{artifact_version}"
     )
 
-    traj_batch, config, env = get_state_traj(
-        model_artifact_remote_name, artifact_version, num_episodes=2
-    )
+    for seed in range(10):
+        traj_batch, config, env = get_state_traj(model_artifact_remote_name,
+                                                 artifact_version,
+                                                 num_episodes=1,
+                                                 seed=seed)
 
-    viz = MPEVisualizer(env, traj_batch.env_state.env_state, config)
+        viz = MPEVisualizer(env, traj_batch.env_state.env_state, config)
 
-    viz.animate(save_filename="artifacts/15_agents_withObs.gif", view=False)  # dev-colab to make matplotlib compatible
+        num_agents = config.env_config.env_kwargs.num_agents
+        viz.animate(
+            save_filename=f"artifacts_paper-aligned-training/{num_agents}_agents_withObs_{seed}.gif",
+            view=False)  # dev-colab to make matplotlib compatible
+        print(f"\n==============DONE SEED {seed}==============\n")
 
-    # shutil.rmtree(model_artifact_name)
+        # shutil.rmtree(model_artifact_name)

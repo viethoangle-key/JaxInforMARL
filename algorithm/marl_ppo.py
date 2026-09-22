@@ -588,41 +588,41 @@ def _env_step(
     # =========== Debugging RL agent after the step ===========
     debug_lines = [
         "\n[DEBUG STEP {step}] (environment 0)",
-        "Actual actor observations (o(i) + agent node features):",
+        # "Actual actor observations (o(i) + agent node features):",
     ]
     debug_values = {"step": debug_step}
-    for agent_index, agent_label in enumerate(env.agent_labels):
-        debug_lines.append(f"  {agent_label}: {{obs_{agent_index}}}")
-        debug_values[f"obs_{agent_index}"] = actor_obs[
-            0, agent_index * num_env
-        ]
+    # for agent_index, agent_label in enumerate(env.agent_labels):
+    #     debug_lines.append(f"  {agent_label}: {{obs_{agent_index}}}")
+    #     debug_values[f"obs_{agent_index}"] = actor_obs[
+    #         0, agent_index * num_env
+    #     ]
 
     debug_lines.append("o(i) ([global position, global velocity, relative goal]):")
     for agent_index, agent_label in enumerate(env.agent_labels):
         debug_lines.append(f"  {agent_label}: {{raw_obs_{agent_index}}}")
         debug_values[f"raw_obs_{agent_index}"] = obs_batch[agent_index * num_env]
 
-    debug_lines.append(
-        "Raw graph node features "
-        "([relative position, relative velocity, relative goal], entity type):"
-    )
-    entity_labels = list(env.agent_labels) + [
-        f"target_{i}" for i in range(env.num_agents)
-    ]
-    for agent_index, agent_label in enumerate(env.agent_labels):
-        actor_index = agent_index * num_env
-        debug_lines.append(f"  Observed by {agent_label}:")
-        for entity_index, entity_label in enumerate(entity_labels):
-            debug_lines.append(
-                f"    {entity_label}: {{graph_equivariant_{agent_index}_{entity_index}}} "
-                f"| {{graph_non_equivariant_{agent_index}_{entity_index}}}"
-            )
-            debug_values[f"graph_equivariant_{agent_index}_{entity_index}"] = (
-                graph_batch.equivariant_nodes[actor_index, entity_index, -1]
-            )
-            debug_values[f"graph_non_equivariant_{agent_index}_{entity_index}"] = (
-                graph_batch.non_equivariant_nodes[actor_index, entity_index, -1]
-            )
+    # debug_lines.append(
+    #     "Raw graph node features "
+    #     "([relative position, relative velocity, relative goal], entity type):"
+    # )
+    # entity_labels = list(env.agent_labels) + [
+    #     f"target_{i}" for i in range(env.num_agents)
+    # ]
+    # for agent_index, agent_label in enumerate(env.agent_labels):
+    #     actor_index = agent_index * num_env
+    #     debug_lines.append(f"  Observed by {agent_label}:")
+    #     for entity_index, entity_label in enumerate(entity_labels):
+    #         debug_lines.append(
+    #             f"    {entity_label}: {{graph_equivariant_{agent_index}_{entity_index}}} "
+    #             f"| {{graph_non_equivariant_{agent_index}_{entity_index}}}"
+    #         )
+    #         debug_values[f"graph_equivariant_{agent_index}_{entity_index}"] = (
+    #             graph_batch.equivariant_nodes[actor_index, entity_index, -1]
+    #         )
+    #         debug_values[f"graph_non_equivariant_{agent_index}_{entity_index}"] = (
+    #             graph_batch.non_equivariant_nodes[actor_index, entity_index, -1]
+    #         )
 
     debug_lines.append("Actions:")
     for agent_index, agent_label in enumerate(env.agent_labels):
@@ -648,22 +648,42 @@ def _env_step(
         debug_lines.append(f"  {agent_label}: {{new_position_{agent_index}}}")
         debug_values[f"new_position_{agent_index}"] = new_agent_positions[agent_index]
 
+    entity_positions = log_env_state.env_state.entity_positions[0]
+    goal_distances = jnp.linalg.norm(
+        entity_positions[: env.num_agents]
+        - entity_positions[env.num_agents:],
+        axis=-1,
+    )
+    entity_radius = env._env._env.entity_radius
+    goal_thresholds = (
+        entity_radius[: env.num_agents] + entity_radius[env.num_agents:]
+    )
+    inside_goal_threshold_array = goal_distances < goal_thresholds
+    debug_lines.append(
+        f"is_agent_inside_goal_threshold: {{inside_goal_threshold}} "
+        f"({{inside_goal_count}}/{env.num_agents})"
+    )
+    debug_values["inside_goal_threshold"] = inside_goal_threshold_array
+    debug_values["inside_goal_count"] = jnp.count_nonzero(
+        inside_goal_threshold_array
+    )
+
     def _print_debug_output(**values):
         action_names = ("Stay still", "Left", "Right", "Down", "Up")
         action_vectors = ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1))
-        for agent_index in range(env.num_agents):
-            for entity_index, entity_label in enumerate(entity_labels):
-                key = f"graph_equivariant_{agent_index}_{entity_index}"
-                matrix = np.array2string(
-                    np.asarray(values[key]),
-                    precision=8,
-                    separator=", ",
-                    suppress_small=True,
-                    floatmode="fixed",
-                    sign=" ",
-                )
-                continuation_indent = " " * len(f"    {entity_label}: ")
-                values[key] = matrix.replace("\n", f"\n{continuation_indent}")
+        # for agent_index in range(env.num_agents):
+        #     for entity_index, entity_label in enumerate(entity_labels):
+        #         key = f"graph_equivariant_{agent_index}_{entity_index}"
+        #         matrix = np.array2string(
+        #             np.asarray(values[key]),
+        #             precision=8,
+        #             separator=", ",
+        #             suppress_small=True,
+        #             floatmode="fixed",
+        #             sign=" ",
+        #         )
+        #         continuation_indent = " " * len(f"    {entity_label}: ")
+        #         values[key] = matrix.replace("\n", f"\n{continuation_indent}")
         for agent_index in range(env.num_agents):
             action_id = int(np.ravel(values[f"action_{agent_index}"])[0])
             values[f"action_name_{agent_index}"] = action_names[action_id]
